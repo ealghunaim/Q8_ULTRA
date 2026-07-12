@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Globe, MapPin, Megaphone, Tag, Users, User, Plus, Trash2, Settings,
   RefreshCw, ChevronDown, ChevronUp, X, ExternalLink, Shield, Check, Pencil,
@@ -330,6 +330,8 @@ export default function App() {
   const [fName, setFName] = useState(""); const [fDate, setFDate] = useState("");
   const [fLoc, setFLoc] = useState(""); const [fCountry, setFCountry] = useState("");
   const [fDists, setFDists] = useState(""); const [fLink, setFLink] = useState("");
+  const [linkFetch, setLinkFetch] = useState(""); // "", loading, done, none, fail
+  const linkTimer = useRef(null);
 
   // composers
   const [annDraft, setAnnDraft] = useState("");
@@ -468,6 +470,27 @@ export default function App() {
   const resetEventForm = () => {
     setAddOpen(false); setEditingEvent(null);
     setFName(""); setFDate(""); setFLoc(""); setFCountry(""); setFDists(""); setFLink("");
+    setLinkFetch(""); if (linkTimer.current) clearTimeout(linkTimer.current);
+  };
+
+  /* paste a race link -> the race-info edge function reads the page and fills the form */
+  const fetchRaceInfo = async (url) => {
+    try { new URL(url); } catch { return; }
+    setLinkFetch("loading");
+    const { data, error } = await supabase.functions.invoke("race-info", { body: { url } });
+    if (error || !data || data.error) {
+      const n = utmbNameFromLink(url);
+      if (n && !fName.trim()) setFName(n);
+      setLinkFetch("fail");
+      return;
+    }
+    let got = 0;
+    if (data.name && !fName.trim()) { setFName(data.name); got++; }
+    if (data.date && !fDate) { setFDate(data.date); got++; }
+    if (data.location && !fLoc.trim()) { setFLoc(data.location); got++; }
+    if (data.country && !fCountry.trim()) { setFCountry(String(data.country)); got++; }
+    if (data.distances && data.distances.length && !fDists.trim()) { setFDists(data.distances.join(", ")); got++; }
+    setLinkFetch(got ? "done" : "none");
   };
 
   const saveEvent = async () => {
@@ -902,14 +925,23 @@ export default function App() {
         {/* add / edit race sheet */}
         {addOpen && (
           <Sheet title={editingEvent ? "Edit race" : tab === "intl" ? "Add international race" : "Add local race"} onClose={resetEventForm}>
-            <Field label="Race link — UTMB links auto-fill the name">
+            <Field label="Race link — paste it and the details fill themselves">
               <input style={inputStyle} value={fLink}
                 onChange={(e) => {
                   const v = e.target.value;
                   setFLink(v);
                   if (!fName.trim()) { const n = utmbNameFromLink(v); if (n) setFName(n); }
+                  if (linkTimer.current) clearTimeout(linkTimer.current);
+                  if (/^https?:\/\/\S+\.\S+/.test(v.trim())) {
+                    setLinkFetch("loading");
+                    linkTimer.current = setTimeout(() => fetchRaceInfo(v.trim()), 700);
+                  } else setLinkFetch("");
                 }}
                 placeholder="Paste registration link (optional)" />
+              {linkFetch === "loading" && <div style={{ fontSize: 12, color: C.teal, fontWeight: 600, marginTop: 5 }}>Reading the race page…</div>}
+              {linkFetch === "done" && <div style={{ fontSize: 12, color: C.teal, fontWeight: 600, marginTop: 5 }}>Details filled — check and adjust before saving.</div>}
+              {linkFetch === "none" && <div style={{ fontSize: 12, color: C.soft, fontWeight: 600, marginTop: 5 }}>That page doesn't expose race details — fill in manually.</div>}
+              {linkFetch === "fail" && <div style={{ fontSize: 12, color: C.soft, fontWeight: 600, marginTop: 5 }}>Couldn't read that page — fill in manually.</div>}
             </Field>
             <Field label="Race name"><input style={inputStyle} value={fName} onChange={(e) => setFName(e.target.value)} placeholder="e.g. Cappadocia Ultra-Trail" /></Field>
             <Field label="Date"><input type="date" style={inputStyle} value={fDate} min={editingEvent ? undefined : todayISO()} onChange={(e) => setFDate(e.target.value)} /></Field>
