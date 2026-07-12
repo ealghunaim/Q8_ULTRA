@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   Globe, MapPin, Megaphone, Tag, Users, User, Plus, Trash2, Settings,
   RefreshCw, ChevronDown, ChevronUp, X, ExternalLink, Shield, Check, Pencil,
-  EyeOff, LogOut,
+  EyeOff, Eye, LogOut,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import logoUrl from "./assets/logo.png";
@@ -52,6 +52,22 @@ function countdown(d) {
   if (n > 0) return `IN ${n} DAYS`;
   return "FINISHED";
 }
+
+/* quick add: derive a race name from a utmb.world link */
+function utmbNameFromLink(url) {
+  try {
+    const u = new URL(url.trim());
+    if (!u.hostname.endsWith("utmb.world")) return null;
+    const cap = (s) => s.split(/[-.]/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+    const sub = u.hostname.replace(".utmb.world", "");
+    if (sub && sub !== "utmb" && sub !== "www" && sub !== "utmb.world") return `${cap(sub)} by UTMB`;
+    const seg = u.pathname.split("/").filter(Boolean).pop();
+    if (seg && !["utmb-world-series-events", "races", "en", "live"].includes(seg)) return `${cap(seg)} by UTMB`;
+  } catch { /* not a URL yet — ignore */ }
+  return null;
+}
+
+const DIST_PRESETS = ["10K", "21K", "42K", "50K", "100K", "100M"];
 
 /* ---------- brand ---------- */
 const LogoMark = ({ size = 34 }) => (
@@ -152,7 +168,7 @@ const ModeBadge = ({ mode, size = 13 }) =>
   );
 
 /* ---------- event card ---------- */
-function EventCard({ ev, joiners, userId, director, onJoin, onWithdraw, onDelete }) {
+function EventCard({ ev, joiners, userId, director, onJoin, onWithdraw, onDelete, onEdit, onToggleHidden, onRemoveEntry }) {
   const [open, setOpen] = useState(false);
   const mine = joiners.find((j) => j.is_self);
   const past = daysTo(ev.date) < 0;
@@ -164,8 +180,15 @@ function EventCard({ ev, joiners, userId, director, onJoin, onWithdraw, onDelete
         <span className="q8-disp" style={{ color: C.card, fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}>
           {ev.scope === "intl" ? (ev.country || "INTERNATIONAL").toUpperCase() : "KUWAIT"}
         </span>
-        <span className="q8-disp" style={{ color: past ? C.card : C.gold, fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}>
-          {countdown(ev.date)}
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {ev.hidden && (
+            <span className="q8-disp" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: C.gold, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>
+              <EyeOff size={12} /> HIDDEN
+            </span>
+          )}
+          <span className="q8-disp" style={{ color: past ? C.card : C.gold, fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}>
+            {countdown(ev.date)}
+          </span>
         </span>
       </div>
 
@@ -237,13 +260,30 @@ function EventCard({ ev, joiners, userId, director, onJoin, onWithdraw, onDelete
                   <X size={15} color={C.danger} />
                 </button>
               )}
+              {director && !j.is_self && j.user_id && (
+                <button className="q8-press" onClick={() => onRemoveEntry(ev, j)} title="Remove from start list" style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
+                  <X size={15} color={C.danger} />
+                </button>
+              )}
             </div>
           ))}
-          {canDelete && (
-            <div style={{ marginTop: 8, textAlign: "right" }}>
-              <button className="q8-body q8-press" onClick={() => onDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <Trash2 size={13} /> Remove race
-              </button>
+          {(canDelete || director) && (
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16 }}>
+              {director && (
+                <button className="q8-body q8-press" onClick={() => onEdit(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: C.ink, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
+              {director && (
+                <button className="q8-body q8-press" onClick={() => onToggleHidden(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: C.goldDeep, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {ev.hidden ? <><Eye size={13} /> Unhide</> : <><EyeOff size={13} /> Hide</>}
+                </button>
+              )}
+              {canDelete && (
+                <button className="q8-body q8-press" onClick={() => onDelete(ev)} style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Trash2 size={13} /> Remove race
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -281,6 +321,10 @@ export default function App() {
   const [joinAnon, setJoinAnon] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null); // director edit mode
+  const [recovery, setRecovery] = useState(false); // password-recovery flow
+  const [rPw, setRPw] = useState(""); const [rPw2, setRPw2] = useState("");
+  const [rBusy, setRBusy] = useState(false);
 
   // add-event form
   const [fName, setFName] = useState(""); const [fDate, setFDate] = useState("");
@@ -304,7 +348,10 @@ export default function App() {
   /* ----- session bootstrap ----- */
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s ?? null);
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -367,9 +414,28 @@ export default function App() {
     setAuthBusy(false);
   };
 
+  const doForgot = async () => {
+    setAuthErr(""); setAuthNotice(""); setAuthBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(authEmail.trim(), { redirectTo: window.location.origin });
+    if (error) setAuthErr(error.message);
+    else setAuthNotice("Reset link sent — check your email (and spam). Open it on this device.");
+    setAuthBusy(false);
+  };
+
+  const doSetNewPassword = async () => {
+    setAuthErr("");
+    if (rPw.length < 6) { setAuthErr("Password must be at least 6 characters."); return; }
+    if (rPw !== rPw2) { setAuthErr("Passwords don't match."); return; }
+    setRBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: rPw });
+    if (error) setAuthErr(error.message);
+    else { setRecovery(false); setRPw(""); setRPw2(""); notify("Password updated — you're signed in."); }
+    setRBusy(false);
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
-    setSettingsOpen(false);
+    setSettingsOpen(false); setRecovery(false);
     setAuthMode("signin"); setAuthEmail(""); setAuthPw(""); setAuthName("");
   };
 
@@ -399,20 +465,46 @@ export default function App() {
     if (error) fail(error); else { notify("Withdrawn."); loadAll(); }
   };
 
-  const addEvent = async () => {
+  const resetEventForm = () => {
+    setAddOpen(false); setEditingEvent(null);
+    setFName(""); setFDate(""); setFLoc(""); setFCountry(""); setFDists(""); setFLink("");
+  };
+
+  const saveEvent = async () => {
+    const scope = editingEvent ? editingEvent.scope : tab;
     const distances = fDists.split(/[,،]/).map((s) => s.trim().toUpperCase()).filter(Boolean);
     if (!fName.trim() || !fDate || !fLoc.trim() || distances.length === 0) { notify("Name, date, location and distances are required."); return; }
-    if (tab === "intl" && !fCountry.trim()) { notify("Country is required for international races."); return; }
-    const { error } = await supabase.from("events").insert({
-      scope: tab, name: fName.trim(), date: fDate, location: fLoc.trim(),
-      country: tab === "intl" ? fCountry.trim() : "", distances,
-      link: fLink.trim(), added_by: user.id,
-    });
+    if (scope === "intl" && !fCountry.trim()) { notify("Country is required for international races."); return; }
+    const fields = {
+      name: fName.trim(), date: fDate, location: fLoc.trim(),
+      country: scope === "intl" ? fCountry.trim() : "", distances, link: fLink.trim(),
+    };
+    const { error } = editingEvent
+      ? await supabase.from("events").update(fields).eq("id", editingEvent.id)
+      : await supabase.from("events").insert({ ...fields, scope, added_by: user.id });
     if (error) { fail(error); return; }
-    setAddOpen(false);
-    setFName(""); setFDate(""); setFLoc(""); setFCountry(""); setFDists(""); setFLink("");
-    notify("Race added to the board.");
+    notify(editingEvent ? "Race updated." : "Race added to the board.");
+    resetEventForm();
     loadAll();
+  };
+
+  const openEdit = (ev) => {
+    setEditingEvent(ev);
+    setFName(ev.name); setFDate(ev.date); setFLoc(ev.location); setFCountry(ev.country || "");
+    setFDists((ev.distances || []).join(", ")); setFLink(ev.link || "");
+    setAddOpen(true);
+  };
+
+  const toggleHidden = async (ev) => {
+    const { error } = await supabase.from("events").update({ hidden: !ev.hidden }).eq("id", ev.id);
+    if (error) fail(error);
+    else { notify(ev.hidden ? "Race is visible to members again." : "Race hidden — members can't see it now."); loadAll(); }
+  };
+
+  const removeEntry = async (ev, j) => {
+    if (!window.confirm(`Remove ${j.display_name} from ${ev.name}?`)) return;
+    const { error } = await supabase.from("entries").delete().match({ event_id: ev.id, user_id: j.user_id });
+    if (error) fail(error); else { notify("Removed from the start list."); loadAll(); }
   };
 
   const deleteEvent = async (ev) => {
@@ -498,11 +590,26 @@ export default function App() {
             <Field label="Email">
               <input type="email" style={inputStyle} value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="you@example.com" autoFocus={authMode === "signin"} />
             </Field>
-            <Field label="Password">
-              <input type="password" style={inputStyle} value={authPw} onChange={(e) => setAuthPw(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (authMode === "signin" ? doSignIn() : doSignUp())}
-                placeholder={authMode === "signup" ? "At least 6 characters" : ""} />
-            </Field>
+            {authMode !== "forgot" && (
+              <Field label="Password">
+                <input type="password" style={inputStyle} value={authPw} onChange={(e) => setAuthPw(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (authMode === "signin" ? doSignIn() : doSignUp())}
+                  placeholder={authMode === "signup" ? "At least 6 characters" : ""} />
+              </Field>
+            )}
+            {authMode === "signin" && (
+              <div style={{ marginTop: -8, marginBottom: 12, textAlign: "right" }}>
+                <button className="q8-press" onClick={() => { setAuthMode("forgot"); setAuthErr(""); setAuthNotice(""); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12.5, fontWeight: 700, color: C.teal }}>
+                  Forgot password?
+                </button>
+              </div>
+            )}
+            {authMode === "forgot" && (
+              <div style={{ fontSize: 12.5, color: C.soft, marginTop: -6, marginBottom: 12, lineHeight: 1.45 }}>
+                We'll email you a link that signs you in and lets you set a new password.
+              </div>
+            )}
             {authErr && <div style={{ color: C.danger, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{authErr}</div>}
             {authNotice && <div style={{ color: C.teal, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{authNotice}</div>}
             {authMode === "signin" ? (
@@ -510,12 +617,45 @@ export default function App() {
                 <Btn kind="accent" onClick={doSignIn} disabled={authBusy || !authEmail.trim() || !authPw} style={{ width: "100%", marginBottom: 10 }}>Sign in</Btn>
                 <Btn kind="outline" small onClick={() => { setAuthMode("signup"); setAuthErr(""); setAuthNotice(""); }} style={{ width: "100%" }}>New runner? Create an account</Btn>
               </>
-            ) : (
+            ) : authMode === "signup" ? (
               <>
                 <Btn kind="accent" onClick={doSignUp} disabled={authBusy || !authEmail.trim() || !authPw || !authName.trim()} style={{ width: "100%", marginBottom: 10 }}>To the start line</Btn>
                 <Btn kind="outline" small onClick={() => { setAuthMode("signin"); setAuthErr(""); setAuthNotice(""); }} style={{ width: "100%" }}>Already have an account? Sign in</Btn>
               </>
+            ) : (
+              <>
+                <Btn kind="accent" onClick={doForgot} disabled={authBusy || !authEmail.trim()} style={{ width: "100%", marginBottom: 10 }}>Send reset link</Btn>
+                <Btn kind="outline" small onClick={() => { setAuthMode("signin"); setAuthErr(""); setAuthNotice(""); }} style={{ width: "100%" }}>Back to sign in</Btn>
+              </>
             )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ----- render: password recovery ----- */
+  if (recovery) {
+    return (
+      <div className="q8-body" style={{ minHeight: "100vh", background: C.field, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <style>{FONT_CSS}</style>
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginBottom: 20 }}>
+            <LogoMark size={110} />
+            <div style={{ marginTop: 4 }}><Wordmark size={26} /></div>
+            <Eyebrow>Set a new password</Eyebrow>
+          </div>
+          <div style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 14, padding: 22 }}>
+            <Field label="New password">
+              <input type="password" style={inputStyle} value={rPw} onChange={(e) => setRPw(e.target.value)} placeholder="At least 6 characters" autoFocus />
+            </Field>
+            <Field label="Repeat new password">
+              <input type="password" style={inputStyle} value={rPw2} onChange={(e) => setRPw2(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && doSetNewPassword()} />
+            </Field>
+            {authErr && <div style={{ color: C.danger, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{authErr}</div>}
+            <Btn kind="accent" onClick={doSetNewPassword} disabled={rBusy || !rPw || !rPw2} style={{ width: "100%", marginBottom: 10 }}>Save password</Btn>
+            <Btn kind="outline" small onClick={() => { setRecovery(false); setAuthErr(""); }} style={{ width: "100%" }}>Skip — keep old password</Btn>
           </div>
         </div>
       </div>
@@ -576,7 +716,7 @@ export default function App() {
               )}
 
               {upcoming.map((ev) => (
-                <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user.id} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} />
+                <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user.id} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} onEdit={openEdit} onToggleHidden={toggleHidden} onRemoveEntry={removeEntry} />
               ))}
 
               {finished.length > 0 && (
@@ -586,7 +726,7 @@ export default function App() {
                     {showPast ? <ChevronUp size={14} color={C.ink} /> : <ChevronDown size={14} color={C.ink} />}
                   </button>
                   {showPast && <div style={{ marginTop: 10 }}>{finished.map((ev) => (
-                    <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user.id} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} />
+                    <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user.id} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} onEdit={openEdit} onToggleHidden={toggleHidden} onRemoveEntry={removeEntry} />
                   ))}</div>}
                 </div>
               )}
@@ -759,24 +899,40 @@ export default function App() {
           </Sheet>
         )}
 
-        {/* add race sheet */}
+        {/* add / edit race sheet */}
         {addOpen && (
-          <Sheet title={tab === "intl" ? "Add international race" : "Add local race"} onClose={() => setAddOpen(false)}>
-            <Field label="Race name"><input style={inputStyle} value={fName} onChange={(e) => setFName(e.target.value)} placeholder="e.g. Cappadocia Ultra-Trail" /></Field>
-            <Field label="Date"><input type="date" style={inputStyle} value={fDate} min={todayISO()} onChange={(e) => setFDate(e.target.value)} /></Field>
-            <Field label={tab === "intl" ? "Location (city / area)" : "Location in Kuwait"}>
-              <input style={inputStyle} value={fLoc} onChange={(e) => setFLoc(e.target.value)} placeholder={tab === "intl" ? "e.g. Ürgüp" : "e.g. Kabd, Salmi Road"} />
+          <Sheet title={editingEvent ? "Edit race" : tab === "intl" ? "Add international race" : "Add local race"} onClose={resetEventForm}>
+            <Field label="Race link — UTMB links auto-fill the name">
+              <input style={inputStyle} value={fLink}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFLink(v);
+                  if (!fName.trim()) { const n = utmbNameFromLink(v); if (n) setFName(n); }
+                }}
+                placeholder="Paste registration link (optional)" />
             </Field>
-            {tab === "intl" && (
+            <Field label="Race name"><input style={inputStyle} value={fName} onChange={(e) => setFName(e.target.value)} placeholder="e.g. Cappadocia Ultra-Trail" /></Field>
+            <Field label="Date"><input type="date" style={inputStyle} value={fDate} min={editingEvent ? undefined : todayISO()} onChange={(e) => setFDate(e.target.value)} /></Field>
+            <Field label={(editingEvent ? editingEvent.scope : tab) === "intl" ? "Location (city / area)" : "Location in Kuwait"}>
+              <input style={inputStyle} value={fLoc} onChange={(e) => setFLoc(e.target.value)} placeholder={(editingEvent ? editingEvent.scope : tab) === "intl" ? "e.g. Ürgüp" : "e.g. Kabd, Salmi Road"} />
+            </Field>
+            {(editingEvent ? editingEvent.scope : tab) === "intl" && (
               <Field label="Country"><input style={inputStyle} value={fCountry} onChange={(e) => setFCountry(e.target.value)} placeholder="e.g. Türkiye" /></Field>
             )}
-            <Field label="Distances (comma separated)">
+            <Field label="Distances (tap or type, comma separated)">
               <input style={inputStyle} value={fDists} onChange={(e) => setFDists(e.target.value)} placeholder="e.g. 10K, 21K, 50K, 100K" />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                {DIST_PRESETS.map((d) => {
+                  const cur = fDists.split(/[,،]/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+                  const on = cur.includes(d);
+                  return (
+                    <DistChip key={d} label={d} small active={on}
+                      onClick={() => setFDists((on ? cur.filter((x) => x !== d) : [...cur, d]).join(", "))} />
+                  );
+                })}
+              </div>
             </Field>
-            <Field label="Registration link (optional)">
-              <input style={inputStyle} value={fLink} onChange={(e) => setFLink(e.target.value)} placeholder="https://…" />
-            </Field>
-            <Btn kind="accent" onClick={addEvent} style={{ width: "100%" }}>Add to the board</Btn>
+            <Btn kind="accent" onClick={saveEvent} style={{ width: "100%" }}>{editingEvent ? "Save changes" : "Add to the board"}</Btn>
           </Sheet>
         )}
 
@@ -801,7 +957,7 @@ export default function App() {
               </div>
               <div style={{ fontSize: 13, color: director ? C.teal : C.soft, fontWeight: director ? 700 : 400, lineHeight: 1.5 }}>
                 {director
-                  ? "This is a director account — you can post announcements, remove anything, and see hidden names."
+                  ? "This is a director account — you can post announcements, add or edit any race, hide races from members, remove anything or anyone from a start list, and see hidden names."
                   : "Director rights are granted by the admin at the database level — no PIN, nothing to leak."}
               </div>
             </div>
