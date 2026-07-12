@@ -57,17 +57,24 @@ create table public.events (
   distances text[] not null,
   link text not null default '',
   note text not null default '',
+  hidden boolean not null default false,
   added_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
 alter table public.events enable row level security;
 
-create policy "members can read events"
-  on public.events for select to authenticated using (true);
+create policy "members read visible events, directors read all"
+  on public.events for select to authenticated
+  using (not hidden or public.is_director(auth.uid()));
 
 create policy "members can add events"
   on public.events for insert to authenticated with check (added_by = auth.uid());
+
+create policy "directors can edit any event"
+  on public.events for update to authenticated
+  using (public.is_director(auth.uid()))
+  with check (public.is_director(auth.uid()));
 
 create policy "creator or director can delete events"
   on public.events for delete to authenticated
@@ -101,6 +108,10 @@ create policy "edit own entry"
 
 create policy "withdraw own entry"
   on public.entries for delete to authenticated using (user_id = auth.uid());
+
+create policy "directors can remove any entry"
+  on public.entries for delete to authenticated
+  using (public.is_director(auth.uid()));
 
 -- masked start list: name hiding is enforced by the DATABASE, not the client.
 -- security_invoker = off → runs as owner, bypasses entries RLS in a controlled
