@@ -534,7 +534,7 @@ export default function App() {
     });
     if (error) { fail(error); return; }
     setWTitle(""); setWDetails(""); setWPrice(""); setWContact("");
-    notify("Posted to the wall.");
+    notify("Posted to the souq.");
     loadAll();
   };
 
@@ -578,7 +578,7 @@ export default function App() {
             <LogoMark size={140} />
             <div style={{ marginTop: 4 }}><Wordmark size={32} /></div>
             <Arabic size={16} />
-            <Eyebrow>Race boards · start lists · gear wall</Eyebrow>
+            <Eyebrow>Race boards · start lists · gear souq</Eyebrow>
           </div>
 
           <div style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 14, padding: 22 }}>
@@ -769,7 +769,7 @@ export default function App() {
 
           {tab === "wall" && (
             <>
-              <div className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink, marginBottom: 12 }}>The wall</div>
+              <div className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink, marginBottom: 12 }}>The souq</div>
               <div style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, padding: 12, marginBottom: 16 }}>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <DistChip label="SELLING" active={wKind === "sell"} onClick={() => setWKind("sell")} />
@@ -782,14 +782,14 @@ export default function App() {
                   <input style={{ ...inputStyle, flex: 2 }} placeholder="Contact (phone / IG)" value={wContact} onChange={(e) => setWContact(e.target.value)} />
                 </div>
                 <div style={{ marginTop: 10, textAlign: "right" }}>
-                  <Btn small onClick={postWall} disabled={!wTitle.trim()}><Tag size={14} /> Post to the wall</Btn>
+                  <Btn small onClick={postWall} disabled={!wTitle.trim()}><Tag size={14} /> Post to the souq</Btn>
                 </div>
               </div>
 
               {wall.length === 0 && (
                 <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
                   <Tag size={22} color={C.soft} style={{ margin: "0 auto 6px", display: "block" }} />
-                  <div style={{ fontSize: 13, color: C.soft }}>Nothing on the wall. Sell a pack, find poles, pass on race entries.</div>
+                  <div style={{ fontSize: 13, color: C.soft }}>Nothing in the souq. Sell a pack, find poles, pass on race entries.</div>
                 </div>
               )}
               {wall.map((p) => (
@@ -831,7 +831,7 @@ export default function App() {
             <TabBtn id="intl" icon={Globe} label="INTL" />
             <TabBtn id="local" icon={MapPin} label="LOCAL" />
             <TabBtn id="news" icon={Megaphone} label="NEWS" />
-            <TabBtn id="wall" icon={Tag} label="WALL" />
+            <TabBtn id="wall" icon={Tag} label="SOUQ" />
           </div>
         </div>
 
@@ -963,7 +963,7 @@ export default function App() {
             </div>
 
             <div style={{ borderTop: "1.5px solid rgba(15,28,35,0.15)", marginTop: 16, paddingTop: 14, fontSize: 12, color: C.soft, lineHeight: 1.5 }}>
-              Q8_ULTRA · Boards, start lists, announcements and the wall are visible to signed-in members. Hidden entries are masked by the server — members receive "Private runner", never your name.
+              Q8_ULTRA · Boards, start lists, announcements and the souq are visible to signed-in members. Hidden entries are masked by the server — members receive "Private runner", never your name.
             </div>
           </Sheet>
         )}
