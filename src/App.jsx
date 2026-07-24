@@ -325,6 +325,7 @@ export default function App() {
   const [recovery, setRecovery] = useState(false); // password-recovery flow
   const [rPw, setRPw] = useState(""); const [rPw2, setRPw2] = useState("");
   const [rBusy, setRBusy] = useState(false);
+  const [showAuth, setShowAuth] = useState(false); // guests browse; auth on demand
 
   // add-event form
   const [fName, setFName] = useState(""); const [fDate, setFDate] = useState("");
@@ -388,8 +389,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user) { loadProfile(user); loadAll(); }
-    else { setProfile(null); }
+    if (user) { loadProfile(user); } else { setProfile(null); }
+    loadAll(); // guests load the public boards; members load everything
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ----- auth actions ----- */
@@ -443,6 +444,12 @@ export default function App() {
 
   /* ----- board actions ----- */
   const openJoin = (ev, mine) => {
+    if (!user) {
+      setAuthMode("signup");
+      setAuthNotice("Create a free account to join races — you can stay anonymous on start lists.");
+      setShowAuth(true);
+      return;
+    }
     setJoinTarget(ev);
     setJoinDist(mine?.distance || ev.distances[0] || null);
     setJoinMode(mine?.mode || "crew");
@@ -591,8 +598,8 @@ export default function App() {
     );
   }
 
-  /* ----- render: auth ----- */
-  if (!user) {
+  /* ----- render: auth (on demand — guests may browse) ----- */
+  if (!user && showAuth) {
     return (
       <div className="q8-body" style={{ minHeight: "100vh", background: C.field, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <style>{FONT_CSS}</style>
@@ -652,6 +659,10 @@ export default function App() {
               </>
             )}
           </div>
+          <button className="q8-press" onClick={() => { setShowAuth(false); setAuthErr(""); setAuthNotice(""); }}
+            style={{ display: "block", margin: "16px auto 0", background: "none", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 700, color: C.ink }}>
+            Just browsing? View the races →
+          </button>
         </div>
       </div>
     );
@@ -686,6 +697,17 @@ export default function App() {
   }
 
   /* ----- render: app ----- */
+  const GuestLock = ({ title, line }) => (
+    <div style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 14, padding: 26, textAlign: "center", marginTop: 6 }}>
+      <Shield size={26} color={C.teal} style={{ margin: "0 auto 10px", display: "block" }} />
+      <div className="q8-disp" style={{ fontSize: 19, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>{title} · members only</div>
+      <div style={{ fontSize: 13.5, color: C.soft, marginTop: 6, lineHeight: 1.5 }}>{line}</div>
+      <div style={{ marginTop: 14 }}>
+        <Btn kind="accent" onClick={() => { setAuthMode("signup"); setShowAuth(true); }}>Create a free account</Btn>
+      </div>
+    </div>
+  );
+
   const TabBtn = ({ id, icon: Icon, label }) => (
     <button className="q8-press" onClick={() => { setTab(id); loadAll(); }} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: "8px 0 10px", position: "relative", color: tab === id ? C.ink : C.soft }}>
       {tab === id && <div style={{ position: "absolute", top: 0, left: "20%", right: "20%", height: 3, background: C.teal }} />}
@@ -713,9 +735,13 @@ export default function App() {
             <button className="q8-press" onClick={loadAll} style={{ background: "none", border: "none", cursor: "pointer", padding: 6 }} title="Refresh">
               <RefreshCw size={18} color={C.ink} style={busy ? { animation: "q8spin 1s linear infinite" } : {}} />
             </button>
-            <button className="q8-press" onClick={() => setSettingsOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6 }} title="Settings">
-              <Settings size={18} color={C.ink} />
-            </button>
+            {user ? (
+              <button className="q8-press" onClick={() => setSettingsOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6 }} title="Settings">
+                <Settings size={18} color={C.ink} />
+              </button>
+            ) : (
+              <Btn small kind="accent" onClick={() => { setAuthMode("signin"); setShowAuth(true); }}>Sign in</Btn>
+            )}
           </div>
         </div>
 
@@ -734,12 +760,12 @@ export default function App() {
               {upcoming.length === 0 && (
                 <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
                   <div className="q8-disp" style={{ fontSize: 20, fontWeight: 800, color: C.ink, textTransform: "uppercase" }}>Board is empty</div>
-                  <div style={{ fontSize: 13, color: C.soft, marginTop: 4 }}>Add the first {tab === "intl" ? "international" : "local"} race with the + button.</div>
+                  <div style={{ fontSize: 13, color: C.soft, marginTop: 4 }}>{user ? `Add the first ${tab === "intl" ? "international" : "local"} race with the + button.` : "No races on this board yet."}</div>
                 </div>
               )}
 
               {upcoming.map((ev) => (
-                <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user.id} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} onEdit={openEdit} onToggleHidden={toggleHidden} onRemoveEntry={removeEntry} />
+                <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user?.id ?? null} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} onEdit={openEdit} onToggleHidden={toggleHidden} onRemoveEntry={removeEntry} />
               ))}
 
               {finished.length > 0 && (
@@ -749,14 +775,15 @@ export default function App() {
                     {showPast ? <ChevronUp size={14} color={C.ink} /> : <ChevronDown size={14} color={C.ink} />}
                   </button>
                   {showPast && <div style={{ marginTop: 10 }}>{finished.map((ev) => (
-                    <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user.id} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} onEdit={openEdit} onToggleHidden={toggleHidden} onRemoveEntry={removeEntry} />
+                    <EventCard key={ev.id} ev={ev} joiners={startLists[ev.id] || []} userId={user?.id ?? null} director={director} onJoin={openJoin} onWithdraw={withdraw} onDelete={deleteEvent} onEdit={openEdit} onToggleHidden={toggleHidden} onRemoveEntry={removeEntry} />
                   ))}</div>}
                 </div>
               )}
             </>
           )}
 
-          {tab === "news" && (
+          {tab === "news" && !user && <GuestLock title="Announcements" line="Director announcements are for registered runners of the crew." />}
+          {tab === "news" && user && (
             <>
               <div className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink, marginBottom: 12 }}>Announcements</div>
               {director && (
@@ -790,7 +817,8 @@ export default function App() {
             </>
           )}
 
-          {tab === "wall" && (
+          {tab === "wall" && !user && <GuestLock title="The souq" line="Buying and selling gear is for registered runners of the crew." />}
+          {tab === "wall" && user && (
             <>
               <div className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink, marginBottom: 12 }}>The souq</div>
               <div style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, padding: 12, marginBottom: 16 }}>
@@ -823,7 +851,7 @@ export default function App() {
                     </span>
                     {p.price && <span className="q8-disp" style={{ fontSize: 16, fontWeight: 800, color: C.goldDeep }}>{p.price} KD</span>}
                     <span style={{ flex: 1 }} />
-                    {(director || p.user_id === user.id) && (
+                    {(director || (user && p.user_id === user.id)) && (
                       <button className="q8-press" onClick={() => delWall(p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
                         <Trash2 size={14} color={C.danger} />
                       </button>
@@ -842,7 +870,7 @@ export default function App() {
         </div>
 
         {/* FAB */}
-        {(tab === "intl" || tab === "local") && (
+        {user && (tab === "intl" || tab === "local") && (
           <button className="q8-press" onClick={() => setAddOpen(true)} title="Add race" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: 84, width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
             <Plus size={26} />
           </button>
@@ -969,7 +997,7 @@ export default function App() {
         )}
 
         {/* settings sheet */}
-        {settingsOpen && (
+        {settingsOpen && user && (
           <Sheet title="Settings" onClose={() => setSettingsOpen(false)}>
             <div style={{ marginBottom: 14 }}>
               <Eyebrow>Signed in as</Eyebrow>
