@@ -68,6 +68,11 @@ create policy "members read visible events, directors read all"
   on public.events for select to authenticated
   using (not hidden or public.is_director(auth.uid()));
 
+-- guests (not signed in) may view the race boards
+create policy "public can view visible events"
+  on public.events for select to anon
+  using (not hidden);
+
 create policy "members can add events"
   on public.events for insert to authenticated with check (added_by = auth.uid());
 
@@ -137,7 +142,8 @@ from public.entries e
 join public.profiles p on p.id = e.user_id;
 
 grant select on public.start_list to authenticated;
-revoke all on public.start_list from anon;
+-- guests may read the masked start list — anonymous entries stay "Private runner"
+grant select on public.start_list to anon;
 
 -- ---------- announcements (director only) ----------
 create table public.announcements (
