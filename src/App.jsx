@@ -128,6 +128,14 @@ const inputStyle = {
   color: C.ink, outline: "none",
 };
 
+/* iOS renders native date/time pickers with their own sizing rules — strip the
+   chrome so they behave like every other input; tapping still opens the picker */
+const dateInputStyle = {
+  ...inputStyle,
+  WebkitAppearance: "none", appearance: "none",
+  height: 46, display: "block", textAlign: "left",
+};
+
 const Sheet = ({ title, onClose, children }) => (
   <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", background: "rgba(15,28,35,0.55)" }} onClick={onClose}>
     <div
@@ -567,7 +575,9 @@ export default function App() {
   /* ----- training runs ----- */
   const resetTrainingForm = () => {
     setTrainOpen(false); setEditingTraining(null);
-    setTTitle(""); setTDate(""); setTTime("06:00"); setTLoc(""); setTPace("");
+    const now = new Date();
+    setTTitle(""); setTDate(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`);
+    setTTime("06:00"); setTLoc(""); setTPace("");
   };
 
   const openEditTraining = (t) => {
@@ -1210,7 +1220,7 @@ export default function App() {
               {linkFetch === "fail" && <div style={{ fontSize: 12, color: C.soft, fontWeight: 600, marginTop: 5 }}>Couldn't read that page — fill in manually.</div>}
             </Field>
             <Field label="Race name"><input style={inputStyle} value={fName} onChange={(e) => setFName(e.target.value)} placeholder="e.g. Cappadocia Ultra-Trail" /></Field>
-            <Field label="Date"><input type="date" style={inputStyle} value={fDate} min={editingEvent ? undefined : todayISO()} onChange={(e) => setFDate(e.target.value)} /></Field>
+            <Field label="Date"><input type="date" style={dateInputStyle} value={fDate} min={editingEvent ? undefined : todayISO()} onChange={(e) => setFDate(e.target.value)} /></Field>
             <Field label={(editingEvent ? editingEvent.scope : tab) === "intl" ? "Location (city / area)" : "Location in Kuwait"}>
               <input style={inputStyle} value={fLoc} onChange={(e) => setFLoc(e.target.value)} placeholder={(editingEvent ? editingEvent.scope : tab) === "intl" ? "e.g. Ürgüp" : "e.g. Kabd, Salmi Road"} />
             </Field>
@@ -1239,8 +1249,8 @@ export default function App() {
         {trainOpen && director && (
           <Sheet title={editingTraining ? "Edit training run" : "Schedule a training run"} onClose={resetTrainingForm}>
             <Field label="Title"><input style={inputStyle} value={tTitle} onChange={(e) => setTTitle(e.target.value)} placeholder="e.g. Saturday long run — Kabd loop" /></Field>
-            <Field label="Date"><input type="date" style={inputStyle} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field>
-            <Field label="Start time"><input type="time" style={inputStyle} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field>
+            <Field label="Date"><input type="date" style={dateInputStyle} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field>
+            <Field label="Start time"><input type="time" style={dateInputStyle} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field>
             <Field label="Meeting point"><input style={inputStyle} value={tLoc} onChange={(e) => setTLoc(e.target.value)} placeholder="e.g. Kabd gate 3 parking" /></Field>
             <Field label="Distance / pace note (optional)"><input style={inputStyle} value={tPace} onChange={(e) => setTPace(e.target.value)} placeholder="e.g. 20K easy, 6:30/km, headlamps needed" /></Field>
             <Btn kind="accent" onClick={saveTraining} style={{ width: "100%" }}>{editingTraining ? "Save changes" : "Put it on the schedule"}</Btn>
