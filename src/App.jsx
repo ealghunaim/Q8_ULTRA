@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Globe, MapPin, Megaphone, Tag, Users, User, Plus, Trash2, Settings,
   RefreshCw, ChevronDown, ChevronUp, X, ExternalLink, Shield, Check, Pencil,
-  EyeOff, Eye, LogOut,
+  EyeOff, Eye, LogOut, Footprints, Clock, ImagePlus, MessageCircle,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import logoUrl from "./assets/logo.png";
@@ -68,6 +68,10 @@ function utmbNameFromLink(url) {
 }
 
 const DIST_PRESETS = ["10K", "21K", "42K", "50K", "100K", "100M"];
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const fmtRunDay = (ts) => new Date(ts).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const fmtRunTime = (ts) => new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 /* ---------- brand ---------- */
 const LogoMark = ({ size = 34 }) => (
@@ -327,6 +331,21 @@ export default function App() {
   const [rBusy, setRBusy] = useState(false);
   const [showAuth, setShowAuth] = useState(false); // guests browse; auth on demand
 
+  const [trainings, setTrainings] = useState([]);
+  const [trSign, setTrSign] = useState({});
+  const [trainOpen, setTrainOpen] = useState(false);
+  const [editingTraining, setEditingTraining] = useState(null);
+  const [tTitle, setTTitle] = useState(""); const [tDate, setTDate] = useState("");
+  const [tTime, setTTime] = useState(""); const [tLoc, setTLoc] = useState("");
+  const [tPace, setTPace] = useState("");
+
+  const [products, setProducts] = useState([]);
+  const [souqSeg, setSouqSeg] = useState("shop");
+  const [prodOpen, setProdOpen] = useState(false);
+  const [prTitle, setPrTitle] = useState(""); const [prPrice, setPrPrice] = useState("");
+  const [prSizes, setPrSizes] = useState(""); const [prWa, setPrWa] = useState("");
+  const [prFile, setPrFile] = useState(null); const [prBusy, setPrBusy] = useState(false);
+
   // add-event form
   const [fName, setFName] = useState(""); const [fDate, setFDate] = useState("");
   const [fLoc, setFLoc] = useState(""); const [fCountry, setFCountry] = useState("");
@@ -371,13 +390,16 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     setBusy(true);
-    const [evR, slR, anR, wlR] = await Promise.all([
+    const [evR, slR, anR, wlR, trR, tsR, prR] = await Promise.all([
       supabase.from("events").select("*").order("date", { ascending: true }),
       supabase.from("start_list").select("*").order("created_at", { ascending: true }),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       supabase.from("wall_posts").select("*, profiles(name)").order("created_at", { ascending: false }),
+      supabase.from("trainings").select("*").order("starts_at", { ascending: true }),
+      supabase.from("training_signups").select("*, profiles(name)"),
+      supabase.from("products").select("*").order("created_at", { ascending: false }),
     ]);
-    const err = evR.error || slR.error || anR.error || wlR.error;
+    const err = evR.error || slR.error || anR.error || wlR.error || trR.error || prR.error;
     if (err) fail(err);
     setEvents(evR.data || []);
     const grouped = {};
@@ -385,6 +407,11 @@ export default function App() {
     setStartLists(grouped);
     setAnn(anR.data || []);
     setWall(wlR.data || []);
+    setTrainings(trR.data || []);
+    const tg = {};
+    (tsR.data || []).forEach((r) => { (tg[r.training_id] ||= []).push(r); });
+    setTrSign(tg);
+    setProducts(prR.data || []);
     setBusy(false);
   }, []);
 
@@ -535,6 +562,100 @@ export default function App() {
     if (!window.confirm(`Remove ${j.display_name} from ${ev.name}?`)) return;
     const { error } = await supabase.from("entries").delete().match({ event_id: ev.id, user_id: j.user_id });
     if (error) fail(error); else { notify("Removed from the start list."); loadAll(); }
+  };
+
+  /* ----- training runs ----- */
+  const resetTrainingForm = () => {
+    setTrainOpen(false); setEditingTraining(null);
+    setTTitle(""); setTDate(""); setTTime(""); setTLoc(""); setTPace("");
+  };
+
+  const openEditTraining = (t) => {
+    const d = new Date(t.starts_at);
+    setEditingTraining(t);
+    setTTitle(t.title);
+    setTDate(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`);
+    setTTime(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
+    setTLoc(t.location); setTPace(t.pace_note || "");
+    setTrainOpen(true);
+  };
+
+  const saveTraining = async () => {
+    if (!tTitle.trim() || !tDate || !tTime || !tLoc.trim()) { notify("Title, date, time and location are required."); return; }
+    const fields = {
+      title: tTitle.trim(),
+      starts_at: new Date(`${tDate}T${tTime}`).toISOString(),
+      location: tLoc.trim(),
+      pace_note: tPace.trim(),
+    };
+    const { error } = editingTraining
+      ? await supabase.from("trainings").update(fields).eq("id", editingTraining.id)
+      : await supabase.from("trainings").insert({ ...fields, created_by: user.id });
+    if (error) { fail(error); return; }
+    notify(editingTraining ? "Run updated." : "Training run scheduled.");
+    resetTrainingForm();
+    loadAll();
+  };
+
+  const deleteTraining = async (t) => {
+    if (!window.confirm(`Delete "${t.title}"? Signed-up runners will lose it.`)) return;
+    const { error } = await supabase.from("trainings").delete().eq("id", t.id);
+    if (error) fail(error); else { notify("Run deleted."); loadAll(); }
+  };
+
+  const toggleTraining = async (t, mine) => {
+    if (!user) {
+      setAuthMode("signup");
+      setAuthNotice("Create a free account to join training runs.");
+      setShowAuth(true);
+      return;
+    }
+    if (mine) {
+      const { error } = await supabase.from("training_signups").delete().match({ training_id: t.id, user_id: user.id });
+      if (error) fail(error); else { notify("You're out of this run."); loadAll(); }
+    } else {
+      const { error } = await supabase.from("training_signups").insert({ training_id: t.id, user_id: user.id });
+      if (error) { fail(error); return; }
+      notify("You're in — see you out there.");
+      supabase.functions.invoke("training-mailer", { body: { type: "confirm", training_id: t.id } }).catch(() => {});
+      loadAll();
+    }
+  };
+
+  /* ----- crew shop ----- */
+  const resetProductForm = () => {
+    setProdOpen(false);
+    setPrTitle(""); setPrPrice(""); setPrSizes(""); setPrWa(""); setPrFile(null);
+  };
+
+  const saveProduct = async () => {
+    if (!prTitle.trim() || !prWa.trim()) { notify("Item name and WhatsApp number are required."); return; }
+    setPrBusy(true);
+    try {
+      let photo_url = "";
+      if (prFile) {
+        const ext = (prFile.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("shop").upload(path, prFile);
+        if (upErr) throw upErr;
+        photo_url = supabase.storage.from("shop").getPublicUrl(path).data.publicUrl;
+      }
+      const { error } = await supabase.from("products").insert({
+        title: prTitle.trim(), price: prPrice.trim(), sizes: prSizes.trim(),
+        wa_number: prWa.replace(/[^0-9]/g, ""), photo_url, created_by: user.id,
+      });
+      if (error) throw error;
+      notify("Item added to the shop.");
+      resetProductForm();
+      loadAll();
+    } catch (e) { fail(e); }
+    setPrBusy(false);
+  };
+
+  const deleteProduct = async (pr) => {
+    if (!window.confirm(`Remove "${pr.title}" from the shop?`)) return;
+    const { error } = await supabase.from("products").delete().eq("id", pr.id);
+    if (error) fail(error); else { notify("Item removed."); loadAll(); }
   };
 
   const deleteEvent = async (ev) => {
@@ -782,6 +903,69 @@ export default function App() {
             </>
           )}
 
+          {tab === "runs" && (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+                <span className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>Training runs</span>
+                <Eyebrow>{trainings.filter((t) => new Date(t.starts_at) > new Date(Date.now() - 3 * 3600e3)).length} scheduled</Eyebrow>
+              </div>
+
+              {trainings.filter((t) => new Date(t.starts_at) > new Date(Date.now() - 3 * 3600e3)).length === 0 && (
+                <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
+                  <Footprints size={22} color={C.soft} style={{ margin: "0 auto 6px", display: "block" }} />
+                  <div style={{ fontSize: 13, color: C.soft }}>{director ? "No runs scheduled — add one with the + button." : "No training runs scheduled yet."}</div>
+                </div>
+              )}
+
+              {trainings.filter((t) => new Date(t.starts_at) > new Date(Date.now() - 3 * 3600e3)).map((t) => {
+                const list = trSign[t.id] || [];
+                const mine = user ? list.find((sg) => sg.user_id === user.id) : null;
+                return (
+                  <div key={t.id} style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
+                    <div style={{ background: C.ink, padding: "7px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span className="q8-disp" style={{ color: C.gold, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <Clock size={13} /> {fmtRunDay(t.starts_at)} · {fmtRunTime(t.starts_at)}
+                      </span>
+                      {director && (
+                        <span style={{ display: "inline-flex", gap: 10 }}>
+                          <button className="q8-press" onClick={() => openEditTraining(t)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Pencil size={14} color={C.card} /></button>
+                          <button className="q8-press" onClick={() => deleteTraining(t)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Trash2 size={14} color={C.gold} /></button>
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ padding: "10px 12px" }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: C.ink }}>{t.title}</div>
+                      <div style={{ fontSize: 13, color: C.soft, marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+                        <MapPin size={13} /> {t.location}
+                      </div>
+                      {t.pace_note && <div style={{ fontSize: 12.5, color: C.soft, marginTop: 4 }}>{t.pace_note}</div>}
+                      <div style={{ marginTop: 10 }}>
+                        {user ? (
+                          list.length > 0 ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                              {list.map((sg) => (
+                                <span key={sg.user_id} style={{ fontSize: 12, fontWeight: 700, color: C.ink, background: C.field, border: `1px solid ${C.soft}`, borderRadius: 20, padding: "3px 10px" }}>
+                                  {sg.profiles?.name || "Runner"}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 10 }}>No one signed up yet — start the list.</div>
+                          )
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: C.soft, marginBottom: 10 }}>Sign in to see who's going.</div>
+                        )}
+                        <Btn kind={mine ? "outline" : "accent"} small onClick={() => toggleTraining(t, mine)} style={{ width: "100%" }}>
+                          {mine ? "You're in · tap to withdraw" : "Join this run"}
+                        </Btn>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
           {tab === "news" && !user && <GuestLock title="Announcements" line="Director announcements are for registered runners of the crew." />}
           {tab === "news" && user && (
             <>
@@ -817,8 +1001,54 @@ export default function App() {
             </>
           )}
 
-          {tab === "wall" && !user && <GuestLock title="The souq" line="Buying and selling gear is for registered runners of the crew." />}
-          {tab === "wall" && user && (
+          {tab === "wall" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <DistChip label="CREW SHOP" active={souqSeg === "shop"} onClick={() => setSouqSeg("shop")} />
+              <DistChip label="THE SOUQ" active={souqSeg === "souq"} onClick={() => setSouqSeg("souq")} />
+            </div>
+          )}
+
+          {tab === "wall" && souqSeg === "shop" && (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+                <span className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>Crew shop</span>
+                {director && <Btn small kind="accent" onClick={() => { resetProductForm(); setProdOpen(true); }}><ImagePlus size={14} /> Add item</Btn>}
+              </div>
+              {products.length === 0 && (
+                <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
+                  <ImagePlus size={22} color={C.soft} style={{ margin: "0 auto 6px", display: "block" }} />
+                  <div style={{ fontSize: 13, color: C.soft }}>Nothing in the shop yet{director ? " — add the first item." : "."}</div>
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {products.map((pr) => (
+                  <div key={pr.id} style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                    {pr.photo_url && <img src={pr.photo_url} alt={pr.title} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block", borderBottom: `1.5px solid ${C.ink}` }} />}
+                    <div style={{ padding: "8px 10px", flex: 1, display: "flex", flexDirection: "column" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, lineHeight: 1.25 }}>{pr.title}</div>
+                        {director && (
+                          <button className="q8-press" onClick={() => deleteProduct(pr)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Trash2 size={13} color={C.danger} /></button>
+                        )}
+                      </div>
+                      {pr.price && <div className="q8-disp" style={{ fontSize: 15, fontWeight: 800, color: C.goldDeep, marginTop: 2 }}>{pr.price} KD</div>}
+                      {pr.sizes && <div style={{ fontSize: 11.5, color: C.soft, marginTop: 2 }}>Sizes: {pr.sizes}</div>}
+                      <div style={{ marginTop: "auto", paddingTop: 8 }}>
+                        <a href={`https://wa.me/${pr.wa_number}?text=${encodeURIComponent(`Q8_ULTRA shop — I'd like to order: ${pr.title}${pr.price ? ` (${pr.price} KD)` : ""}`)}`}
+                          target="_blank" rel="noreferrer"
+                          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: C.teal, border: `1.5px solid ${C.ink}`, borderRadius: 8, padding: "7px 8px", color: "#fff", fontSize: 12, fontWeight: 800, textDecoration: "none" }}>
+                          <MessageCircle size={14} /> Order on WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tab === "wall" && souqSeg === "souq" && !user && <GuestLock title="The souq" line="Buying and selling used gear between members needs an account." />}
+          {tab === "wall" && souqSeg === "souq" && user && (
             <>
               <div className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink, marginBottom: 12 }}>The souq</div>
               <div style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, padding: 12, marginBottom: 16 }}>
@@ -869,6 +1099,13 @@ export default function App() {
           )}
         </div>
 
+        {/* FAB — schedule a run (directors) */}
+        {director && tab === "runs" && (
+          <button className="q8-press" onClick={() => { resetTrainingForm(); setTrainOpen(true); }} title="Schedule a run" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: 84, width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
+            <Plus size={26} />
+          </button>
+        )}
+
         {/* FAB */}
         {user && (tab === "intl" || tab === "local") && (
           <button className="q8-press" onClick={() => setAddOpen(true)} title="Add race" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: 84, width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
@@ -881,6 +1118,7 @@ export default function App() {
           <div style={{ maxWidth: 448, margin: "0 auto", background: C.card, borderTop: `1.5px solid ${C.ink}`, display: "flex" }}>
             <TabBtn id="intl" icon={Globe} label="INTL" />
             <TabBtn id="local" icon={MapPin} label="LOCAL" />
+            <TabBtn id="runs" icon={Footprints} label="RUNS" />
             <TabBtn id="news" icon={Megaphone} label="NEWS" />
             <TabBtn id="wall" icon={Tag} label="SOUQ" />
           </div>
@@ -997,6 +1235,36 @@ export default function App() {
         )}
 
         {/* settings sheet */}
+        {/* schedule / edit training run */}
+        {trainOpen && director && (
+          <Sheet title={editingTraining ? "Edit training run" : "Schedule a training run"} onClose={resetTrainingForm}>
+            <Field label="Title"><input style={inputStyle} value={tTitle} onChange={(e) => setTTitle(e.target.value)} placeholder="e.g. Saturday long run — Kabd loop" /></Field>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}><Field label="Date"><input type="date" style={inputStyle} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field></div>
+              <div style={{ flex: 1 }}><Field label="Start time"><input type="time" style={inputStyle} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field></div>
+            </div>
+            <Field label="Meeting point"><input style={inputStyle} value={tLoc} onChange={(e) => setTLoc(e.target.value)} placeholder="e.g. Kabd gate 3 parking" /></Field>
+            <Field label="Distance / pace note (optional)"><input style={inputStyle} value={tPace} onChange={(e) => setTPace(e.target.value)} placeholder="e.g. 20K easy, 6:30/km, headlamps needed" /></Field>
+            <Btn kind="accent" onClick={saveTraining} style={{ width: "100%" }}>{editingTraining ? "Save changes" : "Put it on the schedule"}</Btn>
+          </Sheet>
+        )}
+
+        {/* add shop item */}
+        {prodOpen && director && (
+          <Sheet title="Add a shop item" onClose={resetProductForm}>
+            <Field label="Item"><input style={inputStyle} value={prTitle} onChange={(e) => setPrTitle(e.target.value)} placeholder="e.g. Q8_ULTRA trucker cap" /></Field>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}><Field label="Price (KD)"><input style={inputStyle} value={prPrice} onChange={(e) => setPrPrice(e.target.value)} placeholder="e.g. 8" /></Field></div>
+              <div style={{ flex: 2 }}><Field label="Sizes (optional)"><input style={inputStyle} value={prSizes} onChange={(e) => setPrSizes(e.target.value)} placeholder="e.g. S / M / L / XL" /></Field></div>
+            </div>
+            <Field label="Orders WhatsApp number (with country code)"><input style={inputStyle} value={prWa} onChange={(e) => setPrWa(e.target.value)} placeholder="e.g. 96599XXXXXX" /></Field>
+            <Field label="Photo">
+              <input type="file" accept="image/*" onChange={(e) => setPrFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)} style={{ fontSize: 13 }} />
+            </Field>
+            <Btn kind="accent" onClick={saveProduct} disabled={prBusy} style={{ width: "100%" }}>{prBusy ? "Uploading…" : "Add to the shop"}</Btn>
+          </Sheet>
+        )}
+
         {settingsOpen && user && (
           <Sheet title="Settings" onClose={() => setSettingsOpen(false)}>
             <div style={{ marginBottom: 14 }}>
