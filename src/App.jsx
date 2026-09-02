@@ -567,7 +567,7 @@ export default function App() {
   /* ----- training runs ----- */
   const resetTrainingForm = () => {
     setTrainOpen(false); setEditingTraining(null);
-    setTTitle(""); setTDate(""); setTTime(""); setTLoc(""); setTPace("");
+    setTTitle(""); setTDate(""); setTTime("06:00"); setTLoc(""); setTPace("");
   };
 
   const openEditTraining = (t) => {
@@ -1239,10 +1239,8 @@ export default function App() {
         {trainOpen && director && (
           <Sheet title={editingTraining ? "Edit training run" : "Schedule a training run"} onClose={resetTrainingForm}>
             <Field label="Title"><input style={inputStyle} value={tTitle} onChange={(e) => setTTitle(e.target.value)} placeholder="e.g. Saturday long run — Kabd loop" /></Field>
-            <div style={{ display: "flex", gap: 10 }}>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}><Field label="Date"><input type="date" style={{ ...inputStyle, height: 46 }} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field></div>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}><Field label="Start time"><input type="time" style={{ ...inputStyle, height: 46 }} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field></div>
-            </div>
+            <Field label="Date"><input type="date" style={inputStyle} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field>
+            <Field label="Start time"><input type="time" style={inputStyle} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field>
             <Field label="Meeting point"><input style={inputStyle} value={tLoc} onChange={(e) => setTLoc(e.target.value)} placeholder="e.g. Kabd gate 3 parking" /></Field>
             <Field label="Distance / pace note (optional)"><input style={inputStyle} value={tPace} onChange={(e) => setTPace(e.target.value)} placeholder="e.g. 20K easy, 6:30/km, headlamps needed" /></Field>
             <Btn kind="accent" onClick={saveTraining} style={{ width: "100%" }}>{editingTraining ? "Save changes" : "Put it on the schedule"}</Btn>
