@@ -123,7 +123,7 @@ const Field = ({ label, children }) => (
 );
 
 const inputStyle = {
-  width: "100%", boxSizing: "border-box", padding: "11px 12px", fontSize: 15,
+  width: "100%", boxSizing: "border-box", minWidth: 0, padding: "11px 12px", fontSize: 15,
   border: `1.5px solid ${C.ink}`, borderRadius: 8, background: "#fff",
   color: C.ink, outline: "none",
 };
@@ -1240,8 +1240,8 @@ export default function App() {
           <Sheet title={editingTraining ? "Edit training run" : "Schedule a training run"} onClose={resetTrainingForm}>
             <Field label="Title"><input style={inputStyle} value={tTitle} onChange={(e) => setTTitle(e.target.value)} placeholder="e.g. Saturday long run — Kabd loop" /></Field>
             <div style={{ display: "flex", gap: 10 }}>
-              <div style={{ flex: 1 }}><Field label="Date"><input type="date" style={inputStyle} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field></div>
-              <div style={{ flex: 1 }}><Field label="Start time"><input type="time" style={inputStyle} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field></div>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><Field label="Date"><input type="date" style={{ ...inputStyle, height: 46 }} value={tDate} onChange={(e) => setTDate(e.target.value)} /></Field></div>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><Field label="Start time"><input type="time" style={{ ...inputStyle, height: 46 }} value={tTime} onChange={(e) => setTTime(e.target.value)} /></Field></div>
             </div>
             <Field label="Meeting point"><input style={inputStyle} value={tLoc} onChange={(e) => setTLoc(e.target.value)} placeholder="e.g. Kabd gate 3 parking" /></Field>
             <Field label="Distance / pace note (optional)"><input style={inputStyle} value={tPace} onChange={(e) => setTPace(e.target.value)} placeholder="e.g. 20K easy, 6:30/km, headlamps needed" /></Field>
@@ -1254,8 +1254,8 @@ export default function App() {
           <Sheet title="Add a shop item" onClose={resetProductForm}>
             <Field label="Item"><input style={inputStyle} value={prTitle} onChange={(e) => setPrTitle(e.target.value)} placeholder="e.g. Q8_ULTRA trucker cap" /></Field>
             <div style={{ display: "flex", gap: 10 }}>
-              <div style={{ flex: 1 }}><Field label="Price (KD)"><input style={inputStyle} value={prPrice} onChange={(e) => setPrPrice(e.target.value)} placeholder="e.g. 8" /></Field></div>
-              <div style={{ flex: 2 }}><Field label="Sizes (optional)"><input style={inputStyle} value={prSizes} onChange={(e) => setPrSizes(e.target.value)} placeholder="e.g. S / M / L / XL" /></Field></div>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><Field label="Price (KD)"><input style={inputStyle} value={prPrice} onChange={(e) => setPrPrice(e.target.value)} placeholder="e.g. 8" /></Field></div>
+              <div style={{ flex: "2 1 0", minWidth: 0 }}><Field label="Sizes (optional)"><input style={inputStyle} value={prSizes} onChange={(e) => setPrSizes(e.target.value)} placeholder="e.g. S / M / L / XL" /></Field></div>
             </div>
             <Field label="Orders WhatsApp number (with country code)"><input style={inputStyle} value={prWa} onChange={(e) => setPrWa(e.target.value)} placeholder="e.g. 96599XXXXXX" /></Field>
             <Field label="Photo">
