@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Globe, MapPin, Megaphone, Tag, Users, User, Plus, Trash2, Settings,
   RefreshCw, ChevronDown, ChevronUp, X, ExternalLink, Shield, Check, Pencil,
-  EyeOff, Eye, LogOut, Footprints, Clock, ImagePlus, MessageCircle,
+  EyeOff, Eye, LogOut, Footprints, Clock, ImagePlus, MessageCircle, Percent, Copy,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import logoUrl from "./assets/logo.png";
@@ -309,7 +309,13 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = booting, null = signed out
   const [profile, setProfile] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState("intl");
+  const [tab, setTab] = useState("races");
+  const [raceScope, setRaceScope] = useState("intl"); // intl | local sub-tab inside Races
+  const [offers, setOffers] = useState([]);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [oTitle, setOTitle] = useState(""); const [oDetails, setODetails] = useState("");
+  const [oCode, setOCode] = useState(""); const [oLink, setOLink] = useState("");
+  const [oExpiry, setOExpiry] = useState("");
   const [events, setEvents] = useState([]);
   const [startLists, setStartLists] = useState({});
   const [ann, setAnn] = useState([]);
@@ -398,7 +404,7 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     setBusy(true);
-    const [evR, slR, anR, wlR, trR, tsR, prR] = await Promise.all([
+    const [evR, slR, anR, wlR, trR, tsR, prR, ofR] = await Promise.all([
       supabase.from("events").select("*").order("date", { ascending: true }),
       supabase.from("start_list").select("*").order("created_at", { ascending: true }),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
@@ -406,6 +412,7 @@ export default function App() {
       supabase.from("trainings").select("*").order("starts_at", { ascending: true }),
       supabase.from("training_signups").select("*, profiles(name)"),
       supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase.from("offers").select("*").order("created_at", { ascending: false }),
     ]);
     const err = evR.error || slR.error || anR.error || wlR.error || trR.error || prR.error;
     if (err) fail(err);
@@ -420,6 +427,7 @@ export default function App() {
     (tsR.data || []).forEach((r) => { (tg[r.training_id] ||= []).push(r); });
     setTrSign(tg);
     setProducts(prR.data || []);
+    setOffers(ofR.data || []);
     setBusy(false);
   }, []);
 
@@ -536,7 +544,7 @@ export default function App() {
   };
 
   const saveEvent = async () => {
-    const scope = editingEvent ? editingEvent.scope : tab;
+    const scope = editingEvent ? editingEvent.scope : raceScope;
     const distances = fDists.split(/[,،]/).map((s) => s.trim().toUpperCase()).filter(Boolean);
     if (!fName.trim() || !fDate || !fLoc.trim() || distances.length === 0) { notify("Name, date, location and distances are required."); return; }
     if (scope === "intl" && !fCountry.trim()) { notify("Country is required for international races."); return; }
@@ -668,6 +676,35 @@ export default function App() {
     if (error) fail(error); else { notify("Item removed."); loadAll(); }
   };
 
+  /* ----- offers ----- */
+  const resetOfferForm = () => {
+    setOfferOpen(false);
+    setOTitle(""); setODetails(""); setOCode(""); setOLink(""); setOExpiry("");
+  };
+
+  const saveOffer = async () => {
+    if (!oTitle.trim()) { notify("The offer needs a title."); return; }
+    const { error } = await supabase.from("offers").insert({
+      title: oTitle.trim(), details: oDetails.trim(), code: oCode.trim(),
+      link: oLink.trim(), expires_on: oExpiry || null, created_by: user.id,
+    });
+    if (error) { fail(error); return; }
+    notify("Offer posted.");
+    resetOfferForm();
+    loadAll();
+  };
+
+  const deleteOffer = async (o) => {
+    if (!window.confirm(`Remove "${o.title}"?`)) return;
+    const { error } = await supabase.from("offers").delete().eq("id", o.id);
+    if (error) fail(error); else { notify("Offer removed."); loadAll(); }
+  };
+
+  const copyCode = async (code) => {
+    try { await navigator.clipboard.writeText(code); notify("Code copied."); }
+    catch { notify(`Code: ${code}`); }
+  };
+
   const deleteEvent = async (ev) => {
     if (!window.confirm(`Remove ${ev.name} and its start list?`)) return;
     const { error } = await supabase.from("events").delete().eq("id", ev.id);
@@ -714,7 +751,7 @@ export default function App() {
   };
 
   /* ----- derived ----- */
-  const scoped = events.filter((e) => e.scope === tab);
+  const scoped = events.filter((e) => e.scope === raceScope);
   const upcoming = scoped.filter((e) => daysTo(e.date) >= 0).sort((a, b) => a.date.localeCompare(b.date));
   const finished = scoped.filter((e) => daysTo(e.date) < 0).sort((a, b) => b.date.localeCompare(a.date));
 
@@ -879,11 +916,17 @@ export default function App() {
         {/* content */}
         <div style={{ flex: 1, padding: "14px 14px 96px" }}>
 
-          {(tab === "intl" || tab === "local") && (
+          {tab === "races" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <DistChip label="🌍 INTL" active={raceScope === "intl"} onClick={() => setRaceScope("intl")} />
+              <DistChip label="🇰🇼 LOCAL" active={raceScope === "local"} onClick={() => setRaceScope("local")} />
+            </div>
+          )}
+          {tab === "races" && (
             <>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
                 <span className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>
-                  {tab === "intl" ? "International races" : "Local races"}
+                  {raceScope === "intl" ? "International races" : "Local races"}
                 </span>
                 <Eyebrow>{upcoming.length} upcoming</Eyebrow>
               </div>
@@ -891,7 +934,7 @@ export default function App() {
               {upcoming.length === 0 && (
                 <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
                   <div className="q8-disp" style={{ fontSize: 20, fontWeight: 800, color: C.ink, textTransform: "uppercase" }}>Board is empty</div>
-                  <div style={{ fontSize: 13, color: C.soft, marginTop: 4 }}>{user ? `Add the first ${tab === "intl" ? "international" : "local"} race with the + button.` : "No races on this board yet."}</div>
+                  <div style={{ fontSize: 13, color: C.soft, marginTop: 4 }}>{user ? `Add the first ${raceScope === "intl" ? "international" : "local"} race with the + button.` : "No races on this board yet."}</div>
                 </div>
               )}
 
@@ -973,6 +1016,48 @@ export default function App() {
                   </div>
                 );
               })}
+            </>
+          )}
+
+          {tab === "offers" && !user && <GuestLock title="Offers" line="Crew discounts and partner offers are a member benefit." />}
+          {tab === "offers" && user && (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+                <span className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>Offers</span>
+                {director && <Btn small kind="accent" onClick={() => { resetOfferForm(); setOfferOpen(true); }}><Percent size={14} /> Add offer</Btn>}
+              </div>
+              {offers.filter((o) => !o.expires_on || o.expires_on >= todayISO()).length === 0 && (
+                <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
+                  <Percent size={22} color={C.soft} style={{ margin: "0 auto 6px", display: "block" }} />
+                  <div style={{ fontSize: 13, color: C.soft }}>No active offers{director ? " — post the first one." : " right now."}</div>
+                </div>
+              )}
+              {offers.filter((o) => !o.expires_on || o.expires_on >= todayISO()).map((o) => (
+                <div key={o.id} style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 15.5, fontWeight: 800, color: C.ink, lineHeight: 1.3 }}>{o.title}</div>
+                    {director && (
+                      <button className="q8-press" onClick={() => deleteOffer(o)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Trash2 size={14} color={C.danger} /></button>
+                    )}
+                  </div>
+                  {o.details && <div style={{ fontSize: 13.5, color: C.soft, marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{o.details}</div>}
+                  <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                    {o.code && (
+                      <button className="q8-press" onClick={() => copyCode(o.code)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.field, border: `1.5px dashed ${C.ink}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "monospace", fontSize: 13, fontWeight: 700, letterSpacing: "0.08em", color: C.ink }}>
+                        {o.code} <Copy size={13} />
+                      </button>
+                    )}
+                    {o.link && (
+                      <a href={/^https?:/i.test(o.link) ? o.link : `https://${o.link}`} target="_blank" rel="noreferrer"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: C.teal, textDecoration: "none" }}>
+                        Open <ExternalLink size={12} />
+                      </a>
+                    )}
+                    {o.expires_on && <span style={{ fontSize: 11.5, color: C.soft, marginLeft: "auto" }}>valid until {new Date(o.expires_on + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>}
+                  </div>
+                </div>
+              ))}
             </>
           )}
 
@@ -1117,7 +1202,7 @@ export default function App() {
         )}
 
         {/* FAB */}
-        {user && (tab === "intl" || tab === "local") && (
+        {user && tab === "races" && (
           <button className="q8-press" onClick={() => setAddOpen(true)} title="Add race" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: 84, width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
             <Plus size={26} />
           </button>
@@ -1126,9 +1211,9 @@ export default function App() {
         {/* bottom nav */}
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 45 }}>
           <div style={{ maxWidth: 448, margin: "0 auto", background: C.card, borderTop: `1.5px solid ${C.ink}`, display: "flex" }}>
-            <TabBtn id="intl" icon={Globe} label="INTL" />
-            <TabBtn id="local" icon={MapPin} label="LOCAL" />
+            <TabBtn id="races" icon={Globe} label="RACES" />
             <TabBtn id="runs" icon={Footprints} label="RUNS" />
+            <TabBtn id="offers" icon={Percent} label="OFFERS" />
             <TabBtn id="news" icon={Megaphone} label="NEWS" />
             <TabBtn id="wall" icon={Tag} label="SOUQ" />
           </div>
@@ -1200,7 +1285,7 @@ export default function App() {
 
         {/* add / edit race sheet */}
         {addOpen && (
-          <Sheet title={editingEvent ? "Edit race" : tab === "intl" ? "Add international race" : "Add local race"} onClose={resetEventForm}>
+          <Sheet title={editingEvent ? "Edit race" : raceScope === "intl" ? "Add international race" : "Add local race"} onClose={resetEventForm}>
             <Field label="Race link — paste it and the details fill themselves">
               <input style={inputStyle} value={fLink}
                 onChange={(e) => {
@@ -1221,10 +1306,10 @@ export default function App() {
             </Field>
             <Field label="Race name"><input style={inputStyle} value={fName} onChange={(e) => setFName(e.target.value)} placeholder="e.g. Cappadocia Ultra-Trail" /></Field>
             <Field label="Date"><input type="date" style={dateInputStyle} value={fDate} min={editingEvent ? undefined : todayISO()} onChange={(e) => setFDate(e.target.value)} /></Field>
-            <Field label={(editingEvent ? editingEvent.scope : tab) === "intl" ? "Location (city / area)" : "Location in Kuwait"}>
-              <input style={inputStyle} value={fLoc} onChange={(e) => setFLoc(e.target.value)} placeholder={(editingEvent ? editingEvent.scope : tab) === "intl" ? "e.g. Ürgüp" : "e.g. Kabd, Salmi Road"} />
+            <Field label={(editingEvent ? editingEvent.scope : raceScope) === "intl" ? "Location (city / area)" : "Location in Kuwait"}>
+              <input style={inputStyle} value={fLoc} onChange={(e) => setFLoc(e.target.value)} placeholder={(editingEvent ? editingEvent.scope : raceScope) === "intl" ? "e.g. Ürgüp" : "e.g. Kabd, Salmi Road"} />
             </Field>
-            {(editingEvent ? editingEvent.scope : tab) === "intl" && (
+            {(editingEvent ? editingEvent.scope : raceScope) === "intl" && (
               <Field label="Country"><input style={inputStyle} value={fCountry} onChange={(e) => setFCountry(e.target.value)} placeholder="e.g. Türkiye" /></Field>
             )}
             <Field label="Distances (tap or type, comma separated)">
@@ -1245,6 +1330,18 @@ export default function App() {
         )}
 
         {/* settings sheet */}
+        {/* post an offer */}
+        {offerOpen && director && (
+          <Sheet title="Post an offer" onClose={resetOfferForm}>
+            <Field label="Title"><input style={inputStyle} value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="e.g. 20% off at Trail Shop Kuwait" /></Field>
+            <Field label="Details (optional)"><textarea rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} value={oDetails} onChange={(e) => setODetails(e.target.value)} placeholder="How to claim, conditions, branches…" /></Field>
+            <Field label="Discount code (optional)"><input style={inputStyle} value={oCode} onChange={(e) => setOCode(e.target.value)} placeholder="e.g. Q8ULTRA20" /></Field>
+            <Field label="Link (optional)"><input style={inputStyle} value={oLink} onChange={(e) => setOLink(e.target.value)} placeholder="shop or booking page" /></Field>
+            <Field label="Valid until (optional)"><input type="date" style={dateInputStyle} value={oExpiry} onChange={(e) => setOExpiry(e.target.value)} /></Field>
+            <Btn kind="accent" onClick={saveOffer} style={{ width: "100%" }}>Post the offer</Btn>
+          </Sheet>
+        )}
+
         {/* schedule / edit training run */}
         {trainOpen && director && (
           <Sheet title={editingTraining ? "Edit training run" : "Schedule a training run"} onClose={resetTrainingForm}>
