@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Globe, MapPin, Megaphone, Tag, Users, User, Plus, Trash2, Settings,
   RefreshCw, ChevronDown, ChevronUp, X, ExternalLink, Shield, Check, Pencil,
-  EyeOff, Eye, LogOut, Footprints, Clock, ImagePlus, MessageCircle, Percent, Copy,
+  EyeOff, Eye, LogOut, Footprints, Clock, ImagePlus, MessageCircle, Percent, Copy, Phone,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import logoUrl from "./assets/logo.png";
@@ -313,9 +313,10 @@ export default function App() {
   const [raceScope, setRaceScope] = useState("intl"); // intl | local sub-tab inside Races
   const [offers, setOffers] = useState([]);
   const [offerOpen, setOfferOpen] = useState(false);
-  const [oTitle, setOTitle] = useState(""); const [oDetails, setODetails] = useState("");
-  const [oCode, setOCode] = useState(""); const [oLink, setOLink] = useState("");
-  const [oExpiry, setOExpiry] = useState("");
+  const [oCompany, setOCompany] = useState(""); const [oLocation, setOLocation] = useState("");
+  const [oTitle, setOTitle] = useState(""); const [oCode, setOCode] = useState("");
+  const [oContact, setOContact] = useState(""); const [oExpiry, setOExpiry] = useState("");
+  const [oFile, setOFile] = useState(null); const [oBusy, setOBusy] = useState(false);
   const [events, setEvents] = useState([]);
   const [startLists, setStartLists] = useState({});
   const [ann, setAnn] = useState([]);
@@ -377,6 +378,7 @@ export default function App() {
 
   const user = session?.user || null;
   const director = !!profile?.is_director;
+  const master = !!profile?.is_master; // the admin — Q8_ULTRA master account
 
   const notify = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
   const fail = (error, fallbackMsg) => notify(error?.message || fallbackMsg || "Something went wrong — try again.");
@@ -679,19 +681,33 @@ export default function App() {
   /* ----- offers ----- */
   const resetOfferForm = () => {
     setOfferOpen(false);
-    setOTitle(""); setODetails(""); setOCode(""); setOLink(""); setOExpiry("");
+    setOCompany(""); setOLocation(""); setOTitle(""); setOCode("");
+    setOContact(""); setOExpiry(""); setOFile(null);
   };
 
   const saveOffer = async () => {
-    if (!oTitle.trim()) { notify("The offer needs a title."); return; }
-    const { error } = await supabase.from("offers").insert({
-      title: oTitle.trim(), details: oDetails.trim(), code: oCode.trim(),
-      link: oLink.trim(), expires_on: oExpiry || null, created_by: user.id,
-    });
-    if (error) { fail(error); return; }
-    notify("Offer posted.");
-    resetOfferForm();
-    loadAll();
+    if (!oCompany.trim() || !oTitle.trim()) { notify("Company name and the offer are required."); return; }
+    setOBusy(true);
+    try {
+      let logo_url = "";
+      if (oFile) {
+        const ext = (oFile.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `offer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("shop").upload(path, oFile);
+        if (upErr) throw upErr;
+        logo_url = supabase.storage.from("shop").getPublicUrl(path).data.publicUrl;
+      }
+      const { error } = await supabase.from("offers").insert({
+        company: oCompany.trim(), location: oLocation.trim(), title: oTitle.trim(),
+        code: oCode.trim(), contact: oContact.trim(), logo_url,
+        expires_on: oExpiry || null, created_by: user.id,
+      });
+      if (error) throw error;
+      notify("Offer posted.");
+      resetOfferForm();
+      loadAll();
+    } catch (e) { fail(e); }
+    setOBusy(false);
   };
 
   const deleteOffer = async (o) => {
@@ -1024,7 +1040,7 @@ export default function App() {
             <>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
                 <span className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>Offers</span>
-                {director && <Btn small kind="accent" onClick={() => { resetOfferForm(); setOfferOpen(true); }}><Percent size={14} /> Add offer</Btn>}
+                {master && <Btn small kind="accent" onClick={() => { resetOfferForm(); setOfferOpen(true); }}><Percent size={14} /> Add offer</Btn>}
               </div>
               {offers.filter((o) => !o.expires_on || o.expires_on >= todayISO()).length === 0 && (
                 <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
@@ -1034,13 +1050,29 @@ export default function App() {
               )}
               {offers.filter((o) => !o.expires_on || o.expires_on >= todayISO()).map((o) => (
                 <div key={o.id} style={{ background: C.card, border: `1.5px solid ${C.ink}`, borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 15.5, fontWeight: 800, color: C.ink, lineHeight: 1.3 }}>{o.title}</div>
-                    {director && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {o.logo_url ? (
+                      <img src={o.logo_url} alt={o.company} style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover", border: `1.5px solid ${C.ink}`, flexShrink: 0 }} />
+                    ) : (
+                      <span style={{ width: 46, height: 46, borderRadius: 10, background: C.field, border: `1.5px solid ${C.ink}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Percent size={20} color={C.ink} /></span>
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 15.5, fontWeight: 800, color: C.ink, lineHeight: 1.25 }}>{o.company || o.title}</div>
+                      {o.location && (
+                        <div style={{ fontSize: 12.5, color: C.soft, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                          <MapPin size={12} /> {o.location}
+                        </div>
+                      )}
+                    </div>
+                    {master && (
                       <button className="q8-press" onClick={() => deleteOffer(o)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Trash2 size={14} color={C.danger} /></button>
                     )}
                   </div>
-                  {o.details && <div style={{ fontSize: 13.5, color: C.soft, marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{o.details}</div>}
+                  {o.company && o.title && (
+                    <div style={{ marginTop: 10, background: C.field, border: `1px solid ${C.soft}`, borderRadius: 8, padding: "8px 10px", fontSize: 14, fontWeight: 700, color: C.ink, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                      {o.title}
+                    </div>
+                  )}
                   <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                     {o.code && (
                       <button className="q8-press" onClick={() => copyCode(o.code)}
@@ -1048,12 +1080,16 @@ export default function App() {
                         {o.code} <Copy size={13} />
                       </button>
                     )}
-                    {o.link && (
-                      <a href={/^https?:/i.test(o.link) ? o.link : `https://${o.link}`} target="_blank" rel="noreferrer"
+                    {o.contact && (/^\+?\d[\d\s-]{6,}$/.test(o.contact.trim()) ? (
+                      <a href={`https://wa.me/${o.contact.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer"
                         style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: C.teal, textDecoration: "none" }}>
-                        Open <ExternalLink size={12} />
+                        <MessageCircle size={13} /> {o.contact}
                       </a>
-                    )}
+                    ) : (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: C.teal }}>
+                        <Phone size={13} /> {o.contact}
+                      </span>
+                    ))}
                     {o.expires_on && <span style={{ fontSize: 11.5, color: C.soft, marginLeft: "auto" }}>valid until {new Date(o.expires_on + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>}
                   </div>
                 </div>
@@ -1331,14 +1367,18 @@ export default function App() {
 
         {/* settings sheet */}
         {/* post an offer */}
-        {offerOpen && director && (
+        {offerOpen && master && (
           <Sheet title="Post an offer" onClose={resetOfferForm}>
-            <Field label="Title"><input style={inputStyle} value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="e.g. 20% off at Trail Shop Kuwait" /></Field>
-            <Field label="Details (optional)"><textarea rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} value={oDetails} onChange={(e) => setODetails(e.target.value)} placeholder="How to claim, conditions, branches…" /></Field>
+            <Field label="Company name"><input style={inputStyle} value={oCompany} onChange={(e) => setOCompany(e.target.value)} placeholder="e.g. Trail Shop Kuwait" /></Field>
+            <Field label="Company logo">
+              <input type="file" accept="image/*" onChange={(e) => setOFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)} style={{ fontSize: 13 }} />
+            </Field>
+            <Field label="Location"><input style={inputStyle} value={oLocation} onChange={(e) => setOLocation(e.target.value)} placeholder="e.g. The Avenues, 2nd floor" /></Field>
+            <Field label="The offer"><textarea rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="e.g. 20% off all trail shoes for Q8_ULTRA members" /></Field>
             <Field label="Discount code (optional)"><input style={inputStyle} value={oCode} onChange={(e) => setOCode(e.target.value)} placeholder="e.g. Q8ULTRA20" /></Field>
-            <Field label="Link (optional)"><input style={inputStyle} value={oLink} onChange={(e) => setOLink(e.target.value)} placeholder="shop or booking page" /></Field>
+            <Field label="Contact information"><input style={inputStyle} value={oContact} onChange={(e) => setOContact(e.target.value)} placeholder="e.g. 96599XXXXXX or @trailshopkw" /></Field>
             <Field label="Valid until (optional)"><input type="date" style={dateInputStyle} value={oExpiry} onChange={(e) => setOExpiry(e.target.value)} /></Field>
-            <Btn kind="accent" onClick={saveOffer} style={{ width: "100%" }}>Post the offer</Btn>
+            <Btn kind="accent" onClick={saveOffer} disabled={oBusy} style={{ width: "100%" }}>{oBusy ? "Uploading…" : "Post the offer"}</Btn>
           </Sheet>
         )}
 
