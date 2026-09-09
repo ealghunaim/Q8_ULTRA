@@ -140,7 +140,7 @@ const Sheet = ({ title, onClose, children }) => (
   <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", background: "rgba(15,28,35,0.55)" }} onClick={onClose}>
     <div
       onClick={(e) => e.stopPropagation()}
-      style={{ width: "100%", maxWidth: 448, maxHeight: "88vh", overflowY: "auto", background: C.card, borderRadius: "18px 18px 0 0", border: `1.5px solid ${C.ink}`, borderBottom: "none", padding: "18px 18px 28px" }}
+      style={{ width: "100%", maxWidth: 448, maxHeight: "88vh", overflowY: "auto", background: C.card, borderRadius: "18px 18px 0 0", border: `1.5px solid ${C.ink}`, borderBottom: "none", padding: "18px 18px 28px", paddingBottom: "calc(28px + env(safe-area-inset-bottom))" }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <span className="q8-disp" style={{ fontSize: 24, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>{title}</span>
@@ -930,7 +930,7 @@ export default function App() {
         </div>
 
         {/* content */}
-        <div style={{ flex: 1, padding: "14px 14px 96px" }}>
+        <div style={{ flex: 1, padding: "14px 14px 96px", paddingBottom: "calc(96px + env(safe-area-inset-bottom))" }}>
 
           {tab === "races" && (
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -1232,21 +1232,21 @@ export default function App() {
 
         {/* FAB — schedule a run (directors) */}
         {director && tab === "runs" && (
-          <button className="q8-press" onClick={() => { resetTrainingForm(); setTrainOpen(true); }} title="Schedule a run" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: 84, width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
+          <button className="q8-press" onClick={() => { resetTrainingForm(); setTrainOpen(true); }} title="Schedule a run" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: "calc(84px + env(safe-area-inset-bottom))", width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
             <Plus size={26} />
           </button>
         )}
 
         {/* FAB */}
         {user && tab === "races" && (
-          <button className="q8-press" onClick={() => setAddOpen(true)} title="Add race" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: 84, width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
+          <button className="q8-press" onClick={() => setAddOpen(true)} title="Add race" style={{ position: "fixed", right: "max(16px, calc(50% - 208px))", bottom: "calc(84px + env(safe-area-inset-bottom))", width: 54, height: 54, borderRadius: 27, background: C.teal, border: `1.5px solid ${C.ink}`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 45 }}>
             <Plus size={26} />
           </button>
         )}
 
         {/* bottom nav */}
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 45 }}>
-          <div style={{ maxWidth: 448, margin: "0 auto", background: C.card, borderTop: `1.5px solid ${C.ink}`, display: "flex" }}>
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 45, background: C.card }}>
+          <div style={{ maxWidth: 448, margin: "0 auto", background: C.card, borderTop: `1.5px solid ${C.ink}`, display: "flex", paddingBottom: "env(safe-area-inset-bottom)" }}>
             <TabBtn id="races" icon={Globe} label="RACES" />
             <TabBtn id="runs" icon={Footprints} label="RUNS" />
             <TabBtn id="offers" icon={Percent} label="OFFERS" />
@@ -1257,7 +1257,7 @@ export default function App() {
 
         {/* toast */}
         {toast && (
-          <div style={{ position: "fixed", bottom: 76, left: "50%", transform: "translateX(-50%)", zIndex: 60, background: C.ink, color: C.card, borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, maxWidth: "86%", textAlign: "center" }}>
+          <div style={{ position: "fixed", bottom: "calc(76px + env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", zIndex: 60, background: C.ink, color: C.card, borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, maxWidth: "86%", textAlign: "center" }}>
             {toast}
           </div>
         )}
