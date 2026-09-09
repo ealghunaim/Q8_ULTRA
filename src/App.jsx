@@ -1040,7 +1040,7 @@ export default function App() {
             <>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
                 <span className="q8-disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", color: C.ink }}>Offers</span>
-                {master && <Btn small kind="accent" onClick={() => { resetOfferForm(); setOfferOpen(true); }}><Percent size={14} /> Add offer</Btn>}
+                {director && <Btn small kind="accent" onClick={() => { resetOfferForm(); setOfferOpen(true); }}><Percent size={14} /> Add offer</Btn>}
               </div>
               {offers.filter((o) => !o.expires_on || o.expires_on >= todayISO()).length === 0 && (
                 <div style={{ background: C.card, border: `1.5px dashed ${C.soft}`, borderRadius: 12, padding: 22, textAlign: "center" }}>
@@ -1064,7 +1064,7 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    {master && (
+                    {director && (
                       <button className="q8-press" onClick={() => deleteOffer(o)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Trash2 size={14} color={C.danger} /></button>
                     )}
                   </div>
@@ -1367,7 +1367,7 @@ export default function App() {
 
         {/* settings sheet */}
         {/* post an offer */}
-        {offerOpen && master && (
+        {offerOpen && director && (
           <Sheet title="Post an offer" onClose={resetOfferForm}>
             <Field label="Company name"><input style={inputStyle} value={oCompany} onChange={(e) => setOCompany(e.target.value)} placeholder="e.g. Trail Shop Kuwait" /></Field>
             <Field label="Company logo">
